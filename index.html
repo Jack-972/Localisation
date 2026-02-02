@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Traceur LoRaWAN</title>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <style>
+        body { margin: 0; padding: 0; font-family: sans-serif; }
+        #map { height: 100vh; width: 100%; }
+        #info-box {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: white;
+            padding: 15px;
+            z-index: 1000;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.2);
+            max-width: 300px;
+        }
+        .stat-item { margin-bottom: 5px; }
+        h2 { margin-top: 0; font-size: 16px; color: #333; }
+    </style>
+</head>
+<body>
+
+    <div id="info-box">
+        <h2>État du Traceur</h2>
+        <div class="stat-item">Points: <b id="point-count">0</b></div>
+        <div class="stat-item">Dernière MàJ: <span id="last-time">--:--:--</span></div>
+        <div class="stat-item">Lat: <span id="lat">---</span></div>
+        <div class="stat-item">Lon: <span id="lon">---</span></div>
+        <div style="font-size: 12px; color: #666; margin-top:5px;">
+            Rafraîchissement auto (2s)
+        </div>
+    </div>
+
+    <div id="map"></div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <script>
+        // 1. Initialisation de la carte (centrée sur Paris par défaut)
+        var map = L.map('map').setView([48.8566, 2.3522], 13);
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+
+        // Variables pour stocker les objets graphiques
+        var currentMarker = null;
+        var pathPolyline = null;
+
+        // 2. Fonction de mise à jour
+        async function updateMap() {
+            try {
+                const response = await fetch('/api/data');
+                const data = await response.json();
+                
+                // Si pas d'historique, on ne fait rien
+                if (!data.history || data.history.length === 0) return;
+
+                const history = data.history;
+                const lastPoint = history[history.length - 1]; // Le dernier point ajouté
+
+                // Mise à jour du panneau d'info
+                document.getElementById('point-count').innerText = history.length;
+                document.getElementById('last-time').innerText = lastPoint.timestamp;
+                document.getElementById('lat').innerText = lastPoint.lat.toFixed(5);
+                document.getElementById('lon').innerText = lastPoint.lon.toFixed(5);
+
+                // --- DESSIN DU CHEMIN (LIGNE ROUGE) ---
+                // On extrait juste les lat/lon pour la ligne
+                var latlngs = history.map(point => [point.lat, point.lon]);
+
+                if (pathPolyline) {
+                    // Si la ligne existe déjà, on met à jour ses points
+                    pathPolyline.setLatLngs(latlngs);
+                } else {
+                    // Sinon on la crée
+                    pathPolyline = L.polyline(latlngs, {color: 'red', weight: 4}).addTo(map);
+                }
+
+                // --- DESSIN DU MARQUEUR (DERNIERE POSITION) ---
+                if (currentMarker) {
+                    currentMarker.setLatLng([lastPoint.lat, lastPoint.lon]);
+                } else {
+                    currentMarker = L.marker([lastPoint.lat, lastPoint.lon]).addTo(map);
+                }
+
+                // Centrer la carte sur le dernier point (optionnel, agréable pour le suivi)
+                map.panTo([lastPoint.lat, lastPoint.lon]);
+
+            } catch (error) {
+                console.error("Erreur de récupération :", error);
+            }
+        }
+
+        // 3. Lancer la boucle (toutes les 2 secondes)
+        setInterval(updateMap, 2000);
+        updateMap(); // Premier appel immédiat
+    </script>
+</body>
+</html>
